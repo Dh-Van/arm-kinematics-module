@@ -120,7 +120,20 @@ class Visualizer:
         # Create end-effector pose field and labels
         self.pose_button = []
         pose_labels = ['X(m)', 'Y(m)', 'Z(m)', 'RotX(rad)', 'RotY(rad)', 'RotZ(rad)']
-        DEBUG_INIT = [-0.14, -0.36, 0.52, -0.07, -0.36, 1.4]
+        TEST_0 = [0.6, 0.0, 0.3, 0.0, 1.57, 0.0]
+        TEST_1 = [0.09, 0.07, 0.69, -0.91, -0.22, -1.09]
+        # Theta2 = 10deg
+        TEST_2 = [0.1, 0.0, 0.89, 0.0, 0.17, 0.0]
+        # All angles 0
+        TEST_3 = [0, 0, 0.9, 0, 0, 0]
+        # T2=90, T4=-90
+        TEST_4 = [0.33, 0, 0.57, 0, 0, 0]
+        # T1 = 10 T2 = 30 T4 = 50
+        TEST_5 = [-0.078, -0.014, 0.853, 0.175, -0.349, 0]
+        # T3 = -50
+        TEST_6 = [0.345, 0, 0.739, 0, 0.873, 0]
+        TEST_2_DOF = [0.216, 0.396, 0, 0, 0, 1.745]
+        DEBUG_INIT = TEST_1
         for i in range(len(pose_labels)):
             position_label = ttk.Label(self.control_frame, text=pose_labels[i] + ":")
             position_label.grid(column=0, row=row_number, sticky=tk.W)
