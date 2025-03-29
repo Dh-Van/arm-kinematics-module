@@ -655,6 +655,14 @@ class FiveDOFRobot():
         self.calc_robot_points()
 
 
+    def check_limits(self, angles):
+        for i, angle in enumerate(angles):
+            if(angle < self.theta_limits[i][0] and angle > self.theta_limits[i][1]):
+                return False
+        return True
+
+
+
     def calc_inverse_kinematics(self, EE: EndEffector, soln=0):
         """
         Calculate inverse kinematics to determine the joint angles based on end-effector position.
@@ -663,7 +671,7 @@ class FiveDOFRobot():
             EE: EndEffector object containing desired position and orientation.
             soln: Optional parameter for multiple solutions (not implemented).
         """
-
+        solutions = np.zeros((8, 5))
         R_0_6 = euler_to_rotm((EE.rotx, EE.roty, EE.rotz))
         z_rot = R_0_6[:, 2]
         d5 = self.l4 + self.l5
@@ -674,37 +682,53 @@ class FiveDOFRobot():
         N = np.sqrt((j4_z - self.l1) ** 2 + R_w ** 2)
 
         # Could add pi for another sol
-        self.theta[0] = wraptopi(np.arctan2(j4_y, j4_x))
+        solutions[0:3, 0] = wraptopi(np.arctan2(j4_y, j4_x))
+        solutions[4:7, 0] = np.pi + wraptopi(np.arctan2(j4_y, j4_x))
+        
         law_cos = (N ** 2 + self.l2 ** 2 - self.l3 ** 2) / (2 * self.l2 * N)
         mu = np.arccos(np.clip(law_cos, -1, 1))
         lmbda = np.arctan2((j4_z - self.l1), R_w)
 
         # Could subtract mu for another sol
-        self.theta[1]  = wraptopi((np.pi / 2) - lmbda + mu)
+        solutions[[0, 2, 4, 6], 1]  = wraptopi((np.pi / 2) - lmbda) + mu
+        solutions[[1, 3, 5, 7], 1]  = wraptopi((np.pi / 2) - lmbda) - mu
+        
         law_cos = (N ** 2 - self.l2 ** 2 - self.l3 ** 2) / (2 * self.l2 * self.l3)
-        self.theta[2] = wraptopi(np.arccos(np.clip(law_cos, -1, 1)))
-   
-        
-        DH = [
-            [self.theta[0], self.l1, 0, -np.pi/2],
-            [self.theta[1], 0, self.l2, np.pi],
-            [self.theta[2], 0, self.l3, np.pi]
-        ]
-        
-        T_0_1 = dh_to_matrix(DH[0])
-        T_1_2 = dh_to_matrix(DH[1])
-        T_2_3 = dh_to_matrix(DH[2])
-        
-        T_0_3 = T_0_1 @ T_1_2 @ T_2_3
-        R_0_3 = T_0_3[:3, :3]
-        
-        R_3_6 = np.transpose(R_0_3) @ R_0_6
-        
-        self.theta[3] = wraptopi((np.pi / 2) + np.arctan2(R_3_6[1, 2], R_3_6[0, 2]))
-        self.theta[4] = np.arctan2(R_3_6[2, 0], R_3_6[2, 1])
+        solutions[[0, 1, 4, 5], 2] = wraptopi(np.arccos(np.clip(law_cos, -1, 1)))
+        solutions[[2, 3, 6, 7], 2] = -wraptopi(np.arccos(np.clip(law_cos, -1, 1)))
 
+        for i, solution in enumerate(solutions):
+            DH = [
+                [solution[0], self.l1, 0, -np.pi/2],
+                [solution[1], 0, self.l2, np.pi],
+                [solution[2], 0, self.l3, np.pi]
+            ]
+            
+            T_0_1 = dh_to_matrix(DH[0])
+            T_1_2 = dh_to_matrix(DH[1])
+            T_2_3 = dh_to_matrix(DH[2])
+            
+            T_0_3 = T_0_1 @ T_1_2 @ T_2_3
+            R_0_3 = T_0_3[:3, :3]
+            
+            R_3_6 = np.transpose(R_0_3) @ R_0_6
+            
+            solutions[i, 3] = wraptopi((np.pi / 2) + np.arctan2(R_3_6[1, 2], R_3_6[0, 2]))
+            solutions[i, 4] = np.arctan2(R_3_6[2, 0], R_3_6[2, 1])
 
-        self.calc_forward_kinematics(self.theta, radians=True)
+        error_list = []
+        for i, solution in enumerate(solutions):
+            position = [EE.x, EE.y, EE.z, EE.rotx, EE.roty, EE.rotz]
+            self.calc_forward_kinematics(solution, radians=True)
+            calc_pos = [self.ee.x, self.ee.y, self.ee.z, self.ee.rotx, self.ee.roty, self.ee.rotz]
+            error_list.append([np.linalg.norm(np.array(position) - np.array(calc_pos)), i])
+
+        sorted_indices = np.argsort(np.array(error_list)[:, 0])
+
+        sols = sorted_indices[:2]
+        sol = sols[soln]
+
+        self.calc_forward_kinematics(solutions[sol, :], radians=True)
 
     def calc_jacobian(self):
         self.DH = [
@@ -743,10 +767,6 @@ class FiveDOFRobot():
             r = np.array([d[0] - d1[0], d[1] - d1[1], d[2] - d1[2]]).flatten()
             self.J[i] = np.cross(z[:3].flatten(), r.flatten())
             
-        # Uses psuedoinverse to calculate inverse of jacobian
-        # This is done since the jacobian is not square
-        J_inv = np.linalg.pinv(self.J)
-
 
     def calc_numerical_ik(self, EE: EndEffector, tol=0.01, ilimit=50):
         """ Calculate numerical inverse kinematics based on input coordinates. """

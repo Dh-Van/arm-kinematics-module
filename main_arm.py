@@ -1,5 +1,7 @@
 
 import sys
+
+import numpy as np
 sys.path.append('../')
 import argparse
 import tkinter as tk
@@ -134,7 +136,8 @@ class Visualizer:
         # T3 = -50
         TEST_6 = [0.345, 0, 0.739, 0, 0.873, 0]
         TEST_2_DOF = [0.216, 0.396, 0, 0, 0, 1.745]
-        DEBUG_INIT = TEST_1
+        TEST_7 = [0.16, 0.05, 0.35, 0, 0, 0]
+        DEBUG_INIT = TEST_7
         for i in range(len(pose_labels)):
             position_label = ttk.Label(self.control_frame, text=pose_labels[i] + ":")
             position_label.grid(column=0, row=row_number, sticky=tk.W)
