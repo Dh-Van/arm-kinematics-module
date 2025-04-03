@@ -136,7 +136,7 @@ class Visualizer:
         # T3 = -50
         TEST_6 = [0.345, 0, 0.739, 0, 0.873, 0]
         TEST_2_DOF = [0.216, 0.396, 0, 0, 0, 1.745]
-        TEST_7 = [-0.22, 0.002, 0.313, -0.011, -1.453, 0.0]
+        TEST_7 = [0.068, 0.3854, 0.5672, 0, 0.3491, 1.3963]
         DEBUG_INIT = TEST_7
         for i in range(len(pose_labels)):
             position_label = ttk.Label(self.control_frame, text=pose_labels[i] + ":")
