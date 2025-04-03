@@ -683,171 +683,139 @@ class FiveDOFRobot():
             EE: EndEffector object containing desired position and orientation.
             soln: Optional parameter for multiple solutions (not implemented).
         """
-        print(EE.x, EE.y, EE.z)
+        # Solution matrix, where each row represents a solution, and each column (i) is theta_i
         solutions = np.zeros((8, 5))
-
-        R_0_6 = euler_to_rotm((EE.rotx, EE.roty, EE.rotz))
-        z_rot = R_0_6[:, 2]
+        # Calculates the rotation matrix for Joint 0 - Joint 5 from the euler angles
+        R_0_5 = euler_to_rotm((EE.rotx, EE.roty, EE.rotz))
+        # Extracts the z component of the rotation matrix, which always points back to joint 4
+        # due to the kinematically decoupled wrist
+        z_rot = R_0_5[:, 2]
+        # Represnts the length of the wrist + end effector (the kinematically decoupled length)
         d5 = self.l4 + self.l5
+
+        # Calculates the [x, y, z] position of joint 4 by subtracting the end effector position
+        # by d5 scaled by the rotation vector that points back to joint 4. This scales the length
+        # of d5 so that is will give us the position of joint 4
         pos_j4 = np.array([EE.x, EE.y, EE.z]) - (d5 * z_rot)
 
         j4_x, j4_y, j4_z = pos_j4[0], pos_j4[1], pos_j4[2]
 
-        R_w = np.sqrt(j4_x ** 2 + j4_y ** 2)
-        N = np.sqrt((j4_z - self.l1) ** 2 + R_w ** 2)
+        # Calculates the projected wrist location in a new plane. This new plane can exist since
+        # after calculated theta_0, the arm can only move in a plane (up until joint 4). This new
+        # plane allows the kinematic solution to be solved like a 2-dof (double jointed arm)
+        xy = np.sqrt(j4_x ** 2 + j4_y ** 2)
+        # Have to subtract l1 from the z coordinate of the wrist to allow solving like a 2-dof
+        z = j4_z - self.l1
 
-        # Could add pi for another sol
+        # Represents the distance from joint 1 to joint 4 in plane
+        N = np.sqrt(z ** 2 + xy ** 2)
+
+        # Calculates theta_0 based on the y and x position of the end effector. This is since
+        # when you look from a top down view the arm is just a line where the angle of the line
+        # directly corresponds to theta_0
         solutions[0:3, 0] = wraptopi(np.arctan2(EE.y, EE.x))
+        # Adding pi accounts for the second mathematical solution
         solutions[4:7, 0] = wraptopi(np.pi + np.arctan2(EE.y, EE.x))
 
+        # Calculates beta using the law of cosines based on link lengths; the clipping is required
+        # since sometimes there is numerical error that causes the input to acos to be slightly above
+        # 1 and throw a value error
         beta = np.arccos(np.clip((self.l2 ** 2 + self.l3 ** 2 - N ** 2) / (2 * self.l2 * self.l3), -1, 1))
+        # pi + beta is one mathematical solution
         solutions[[0, 2, 4, 6], 2] = np.pi + beta
+        # pi - beta is the second mathematical solution
         solutions[[1, 3, 5, 7], 2] = np.pi - beta
 
-        alpha = np.arctan2(self.l3 * sin(solutions[0, 2]), self.l2 + self.l3 * cos(solutions[0, 2]))
-        gamma = np.arctan2((j4_z - self.l1), R_w)
+        # Calculates the alpha angle (angle between the joint and vertical) based on one theta_2 solution
+        alpha = np.arctan2(self.l3 * np.sin(solutions[0, 2]), self.l2 + self.l3 * np.cos(solutions[0, 2]))
+        # Calculates the gamma angle (theta_1 + alpha) based on one theta_2 solution
+        gamma = np.arctan2(z, xy)
 
+        # Calculates one theta_1 angle; Subtracting by 90 degrees is essential since that accounts for
+        # the offset (based on the DH table)
         solutions[[0, 1, 4, 5], 1] = gamma - alpha - (np.pi / 2)
 
-        alpha = np.arctan2(self.l3 * sin(solutions[1, 2]), self.l2 + self.l3 * cos(solutions[1, 2]))
-        gamma = np.arctan2((j4_z - self.l1), R_w)
+        # Same as above, but calculates angles based on the other theta_2 solution
+        alpha = np.arctan2(self.l3 * np.sin(solutions[1, 2]), self.l2 + self.l3 * np.cos(solutions[1, 2]))
+        gamma = np.arctan2(z, xy)
 
         solutions[[2, 3, 6, 7], 1] = gamma - alpha - (np.pi / 2)
 
+        # Iterates through all possible solutions (2^3 since theta_0, theta_1, theta_2 all have 2 solutions) 
+        # and calculates each respective theta_3, and theta_4
         for i, solution in enumerate(solutions):
+            # We don't have to account for offsets here, since we already accounted for it above
             DH = [
                 [solution[0], self.l1, 0, -np.pi/2],
                 [solution[1], 0, self.l2, np.pi],
                 [solution[2], 0, self.l3, np.pi]
             ]
             
+            # Calculates the transformation matricies for each sucessive link based on the DH table
             T_0_1 = dh_to_matrix(DH[0])
             T_1_2 = dh_to_matrix(DH[1])
             T_2_3 = dh_to_matrix(DH[2])
             
+            # Calculates the total transformation matrix to get from joint 0 to joint 3
             T_0_3 = T_0_1 @ T_1_2 @ T_2_3
+            # Extracts the rotation matrix, this is done since it is more computationally efficent to
+            # take the transpose of a rotation matrix (which is the inverse) as compared to the inverse
+            # of a transformation matrix
             R_0_3 = T_0_3[:3, :3]
             
-            R_3_6 = np.transpose(R_0_3) @ R_0_6
+            # Calculates the rotation matrix to get from joint 3 to joint 5. This is since:
+            # R_0_3 * R_3_5 = R_0_5 -> R_3_5 = R_0_3 ^ -1 * R_0_5. The inverse of a rotation
+            # matrix is the same as the transpose, and the transpose of a rotation matrix is
+            # much more computationally efficent
+            R_3_5 = np.transpose(R_0_3) @ R_0_5
             
-            solutions[i, 3] = wraptopi((np.pi / 2) + np.arctan2(R_3_6[1, 2], R_3_6[0, 2]))
-            solutions[i, 4] = wraptopi(np.arctan2(R_3_6[2, 0], R_3_6[2, 1]))
+            # Calculates theta_3 based on the symbolic solution of the rotation matrix
+            # Element 1,2 is sin(theta_3) and element 0,2 is cos(theta_3) so I can use 
+            # those together in tan^-1 to solve for theta_3. Adding pi/2 is essential
+            # to account for the offset
+            solutions[i, 3] = wraptopi(np.arctan2(R_3_5[1, 2], R_3_5[0, 2]) + (np.pi / 2))
+            # A similar process was used as that mentioned above, expect for theta_4 instead
+            # of theta_3
+            solutions[i, 4] = wraptopi(np.arctan2(R_3_5[2, 0], R_3_5[2, 1]))
 
-        valid_solutions = []
-
-        for i, solution in enumerate(solutions):
-            # if not self.check_limits(solution):
-            #     continue
-                
-            target_pos = [EE.x, EE.y, EE.z, EE.rotx, EE.roty, EE.rotz]
-            self.calc_forward_kinematics(solution, radians=True)
-            achieved_pos = [self.ee.x, self.ee.y, self.ee.z, self.ee.rotx, self.ee.roty, self.ee.rotz]
-            
-            error = np.linalg.norm(np.array(target_pos) - np.array(achieved_pos))
-            valid_solutions.append((error, i, solution))
-
-        if not valid_solutions:
-            raise ValueError("No valid solutions found within joint limits")
-        
-        valid_solutions.sort()
-        best_error, best_index, best_solution = valid_solutions[soln]
-        print(best_error)
-        return self.calc_forward_kinematics(best_solution, radians=True)
-         
-    def check_limits(self, theta_list):
-        for i, theta in enumerate(theta_list):
-            if(theta < self.theta_limits[i][0] or theta > self.theta_limits[i][1]):
-                return False
-        return True
-
-
-
-    '''    
-    def calc_inverse_kinematics(self, EE: EndEffector, soln=0):
-        """
-        Calculate inverse kinematics to determine the joint angles based on end-effector position.
-        
-        Args:
-            EE: EndEffector object containing desired position and orientation.
-            soln: Optional parameter for multiple solutions (not implemented).
-        """
-        solutions = np.zeros((8, 5))
-        R_0_6 = euler_to_rotm((EE.rotx, EE.roty, EE.rotz))
-        z_rot = R_0_6[:, 2]
-        d5 = self.l4 + self.l5
-        pos_j4 = np.array([EE.x, EE.y, EE.z]) - (d5 * z_rot)
-        j4_x, j4_y, j4_z = pos_j4[0], pos_j4[1], pos_j4[2]
-
-        R_w = np.sqrt(j4_x ** 2 + j4_y ** 2)
-        N = np.sqrt((j4_z - self.l1) ** 2 + R_w ** 2)
-
-        # Could add pi for another sol
-        solutions[0:3, 0] = wraptopi(np.arctan2(j4_y, j4_x))
-        solutions[4:7, 0] = wraptopi(np.pi + wraptopi(np.arctan2(j4_y, j4_x)))
-        
-        law_cos = (N ** 2 + self.l2 ** 2 - self.l3 ** 2) / (2 * self.l2 * N)
-        mu = np.arccos(np.clip(law_cos, -1, 1))
-        lmbda = np.arctan2((j4_z - self.l1), R_w)
-
-        # Could subtract mu for another sol
-        solutions[[0, 2, 4, 6], 1]  = wraptopi((np.pi / 2) - lmbda) + mu
-        solutions[[1, 3, 5, 7], 1]  = wraptopi((np.pi / 2) - lmbda) - mu
-        
-        law_cos = (N ** 2 - self.l2 ** 2 - self.l3 ** 2) / (2 * self.l2 * self.l3)
-        solutions[[0, 1, 4, 5], 2] = wraptopi(np.arccos(np.clip(law_cos, -1, 1)))
-        solutions[[2, 3, 6, 7], 2] = -wraptopi(np.arccos(np.clip(law_cos, -1, 1)))
-
-        for i, solution in enumerate(solutions):
-            DH = [
-                [solution[0], self.l1, 0, -np.pi/2],
-                [solution[1], 0, self.l2, np.pi],
-                [solution[2], 0, self.l3, np.pi]
-            ]
-            
-            T_0_1 = dh_to_matrix(DH[0])
-            T_1_2 = dh_to_matrix(DH[1])
-            T_2_3 = dh_to_matrix(DH[2])
-            
-            T_0_3 = T_0_1 @ T_1_2 @ T_2_3
-            R_0_3 = T_0_3[:3, :3]
-            
-            R_3_6 = np.transpose(R_0_3) @ R_0_6
-            
-            solutions[i, 3] = wraptopi((np.pi / 2) + np.arctan2(R_3_6[1, 2], R_3_6[0, 2]))
-            solutions[i, 4] = wraptopi(np.arctan2(R_3_6[2, 0], R_3_6[2, 1]))
-            
+        # Iterates through each solution and makes sure it is valid
         valid_solutions = []
         for i, solution in enumerate(solutions):
-            # Check joint limits first (discard immediately if invalid)
+            # This is most important for the actual robot since the limits stop it from breaking
             if not self.check_limits(solution):
                 continue
-                
-            # Calculate achieved position
+            # This is the intended position of the end effector
             target_pos = [EE.x, EE.y, EE.z, EE.rotx, EE.roty, EE.rotz]
+            # This will update the position of the end effector based on the current solution
+            # letting us access the positional information of the end effector
             self.calc_forward_kinematics(solution, radians=True)
-            achieved_pos = [self.ee.x, self.ee.y, self.ee.z, 
-                        self.ee.rotx, self.ee.roty, self.ee.rotz]
-            
-            # Calculate error
+            # This is the position of the end effector based on the current solution
+            achieved_pos = [self.ee.x, self.ee.y, self.ee.z, self.ee.rotx, self.ee.roty, self.ee.rotz]
+            # How far away the current position is from the intended position
             error = np.linalg.norm(np.array(target_pos) - np.array(achieved_pos))
-            
-            # Store valid solutions with their error and index
+            # Only valid solutions are appended to this list, and the first element is the error
             valid_solutions.append((error, i, solution))
-
+        
+        # This can happen when the input location was outside the workspace or exceeds the joint limits
         if not valid_solutions:
             raise ValueError("No valid solutions found within joint limits")
-
-        # Sort by error (ascending - lowest error first)
+        # Sorts the valid solutions based on the error (ascending sort), should make it so that the
+        # first couple of solutions in the array are the real valid solutions
         valid_solutions.sort()
-
-        # Get the best solution (lowest error)
-        best_error, best_index, best_solution = valid_solutions[0]
-
-        # Apply it
-        self.calc_forward_kinematics(best_solution, radians=True)
-    '''    
+        # The soln parameter is used here for the solve 1 / solve 2 buttons, this works since
+        # the second best solution should be the opposite elbow configuration from the best solution
+        best_error, _, best_solution = valid_solutions[soln]
+        # Recalculates the forward kinematics based on the best solution
+        return self.calc_forward_kinematics(best_solution, radians=True)
+         
 
     def check_limits(self, theta_list):
+        '''
+        Ensure the the input robot configuration is inside the joint limits
+        
+        Args:
+        theta_list: List from theta_0 to theta_5
+        '''
         for i, theta in enumerate(theta_list):
             if(theta < self.theta_limits[i][0] or theta > self.theta_limits[i][1]):
                 return False
@@ -894,23 +862,30 @@ class FiveDOFRobot():
     def calc_numerical_ik(self, EE: EndEffector, tol=0.01, ilimit=50):
         """ Calculate numerical inverse kinematics based on input coordinates. """
         
-        # Generates random theta valyes between each limit
+        # Generates random theta values between each limit as our initial guess
         for i, limit in enumerate(self.theta_limits):
             min_value = limit[0]
             max_value = limit[1]
             random_value = np.random.uniform(min_value, max_value)
             self.theta[i] = random_value
 
+        # Loops until ilimit is reached
         for i in range(0, ilimit):
+            # Calculates the forward kinematics based on the current theta values
             self.calc_forward_kinematics(self.theta, radians=True)
+            # Extracts the error
             error = [EE.x - self.ee.x, EE.y - self.ee.y, EE.z - self.ee.z]
+            # The exit condition of the loop
             if(np.linalg.norm(error) <= tol):
                 break
+            # Updates the jacobian member variable based on the member theta values
             self.calc_jacobian()
+            # Calculates the pseudo-inverse of the jacobian
             J_inv = np.linalg.pinv(self.J)
+            # Adds the step size to the current theta values, newton raphson method
             self.theta += error @ J_inv
-                
 
+        # Updates the end effector posiiton based on the final theta values
         self.calc_forward_kinematics(self.theta, radians=True)
 
     
@@ -921,7 +896,6 @@ class FiveDOFRobot():
         Args:
             vel: Desired end-effector velocity (3x1 vector).
         """
-        
 
         # Computes the total transformation matricies to get from frame 0 to frame i
         T_cumulative = [np.eye(4)]
