@@ -613,13 +613,13 @@ class FiveDOFRobot():
             [-np.pi, np.pi]
         ]
 
-        self.theta_limits = [
-            [-(2 * np.pi) / 3, (2 * np.pi) / 3], 
-            [-np.pi/2, np.pi/2], 
-            [-2 * np.pi / 3, 2 * np.pi / 3],
-            [-5 * np.pi / 9, 5 * np.pi / 9], 
-            [-np.pi / 2, np.pi / 2], 
-        ]
+        # self.theta_limits = [
+        #     [-(2 * np.pi) / 3, (2 * np.pi) / 3], 
+        #     [-np.pi/2, np.pi/2], 
+        #     [-2 * np.pi / 3, 2 * np.pi / 3],
+        #     [-5 * np.pi / 9, 5 * np.pi / 9], 
+        #     [-np.pi / 2, np.pi / 2], 
+        # ]
         
         # End-effector object
         self.ee = EndEffector()
@@ -722,9 +722,9 @@ class FiveDOFRobot():
         # 1 and throw a value error
         beta = np.arccos(np.clip((self.l2 ** 2 + self.l3 ** 2 - N ** 2) / (2 * self.l2 * self.l3), -1, 1))
         # pi + beta is one mathematical solution
-        solutions[[0, 2, 4, 6], 2] = np.pi + beta
+        solutions[[0, 2, 4, 6], 2] = wraptopi(np.pi + beta)
         # pi - beta is the second mathematical solution
-        solutions[[1, 3, 5, 7], 2] = np.pi - beta
+        solutions[[1, 3, 5, 7], 2] = wraptopi(np.pi - beta)
 
         # Calculates the alpha angle (angle between the joint and vertical) based on one theta_2 solution
         alpha = np.arctan2(self.l3 * np.sin(solutions[0, 2]), self.l2 + self.l3 * np.cos(solutions[0, 2]))
@@ -782,8 +782,8 @@ class FiveDOFRobot():
         valid_solutions = []
         for i, solution in enumerate(solutions):
             # This is most important for the actual robot since the limits stop it from breaking
-            if not self.check_limits(solution):
-                continue
+            # if not self.check_limits(solution):
+            #     continue
             # This is the intended position of the end effector
             target_pos = [EE.x, EE.y, EE.z, EE.rotx, EE.roty, EE.rotz]
             # This will update the position of the end effector based on the current solution
@@ -805,6 +805,7 @@ class FiveDOFRobot():
         # The soln parameter is used here for the solve 1 / solve 2 buttons, this works since
         # the second best solution should be the opposite elbow configuration from the best solution
         best_error, _, best_solution = valid_solutions[soln]
+        print(f'Analytical IK Error = {best_error}')
         # Recalculates the forward kinematics based on the best solution
         return self.calc_forward_kinematics(best_solution, radians=True)
          
@@ -869,6 +870,8 @@ class FiveDOFRobot():
             random_value = np.random.uniform(min_value, max_value)
             self.theta[i] = random_value
 
+        error = []
+
         # Loops until ilimit is reached
         for i in range(0, ilimit):
             # Calculates the forward kinematics based on the current theta values
@@ -885,6 +888,8 @@ class FiveDOFRobot():
             # Adds the step size to the current theta values, newton raphson method
             self.theta += error @ J_inv
 
+        error = np.linalg.norm(np.array(error))
+        print(f'Analytical IK Error = {error}')
         # Updates the end effector posiiton based on the final theta values
         self.calc_forward_kinematics(self.theta, radians=True)
 

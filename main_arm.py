@@ -128,7 +128,7 @@ class Visualizer:
         # Theta2 = 10deg
         TEST_2 = [0.1, 0.0, 0.89, 0.0, 0.17, 0.0]
         # All angles 0
-        TEST_3 = [0, 0, 0.9, 0, 0, 0]
+        TEST_3 = [0, 0, 0, 0, 0, 0]
         # T2=90, T4=-90
         TEST_4 = [0.33, 0, 0.57, 0, 0, 0]
         # T1 = 10 T2 = 30 T4 = 50
@@ -137,7 +137,7 @@ class Visualizer:
         TEST_6 = [0.345, 0, 0.739, 0, 0.873, 0]
         TEST_2_DOF = [0.216, 0.396, 0, 0, 0, 1.745]
         TEST_7 = [0.068, 0.3854, 0.5672, 0, 0.3491, 1.3963]
-        DEBUG_INIT = TEST_7
+        DEBUG_INIT = TEST_3
         for i in range(len(pose_labels)):
             position_label = ttk.Label(self.control_frame, text=pose_labels[i] + ":")
             position_label.grid(column=0, row=row_number, sticky=tk.W)
