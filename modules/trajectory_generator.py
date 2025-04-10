@@ -259,6 +259,56 @@ class TrapezoidVelocity():
     """
     Trapezoidal velocity profile generator for constant acceleration/deceleration phases.
     """
-    
+
     def __init__(self, trajgen):
-        pass
+        self._copy_params(trajgen)
+
+    def _copy_params(self, trajgen):
+        self.start_pos = trajgen.start_pos
+        self.start_vel = trajgen.start_vel
+        self.final_pos = trajgen.final_pos
+        self.final_vel = trajgen.final_vel
+        self.start_acc = trajgen.start_acc
+        self.final_acc = trajgen.final_acc
+        self.T = trajgen.T
+        self.ndof = trajgen.ndof
+        self.X = [None] * self.ndof
+
+
+    def generate(self, nsteps=100):
+        t0, tf = 0, self.T
+        max_vel, max_acc = 5, 1.5
+
+        self.t = np.linspace(0, self.T, nsteps)
+
+        acc_time = max_vel / max_acc
+        coast_time = tf - 2 * acc_time
+
+        q = np.zeros_like(self.t)
+        qd = np.zeros_like(self.t)
+        qdd = np.zeros_like(self.t)
+
+        acc_mask = (self.t <= acc_time)
+        q[acc_mask] = (1/2) * max_acc * self.t[acc_mask] ** 2
+        qd[acc_mask] = max_acc * self.t[acc_mask]
+        qdd[acc_mask] = max_acc
+
+        coast_mask = (self.t > acc_time) & (self.t < acc_time + coast_time)
+        pos_acc_end = (1/2) * max_acc * acc_time ** 2
+        q[coast_mask] = pos_acc_end + max_vel * (self.t[coast_mask] - acc_time)
+        qd[coast_mask] = max_vel
+        qdd[coast_mask] = 0
+
+        dec_mask = (self.t >= acc_time + coast_time)
+        pos_coast_end = pos_acc_end + max_vel * coast_time
+        q[dec_mask] = (pos_coast_end + max_vel * (self.t[dec_mask] - (acc_time + coast_time)) - 0.5 * max_acc * (self.t[dec_mask] - (acc_time + coast_time))**2)
+        qd[dec_mask] = max_vel - max_acc * (self.t[dec_mask] - (acc_time + coast_time))
+        qdd[dec_mask] = -max_acc
+
+        self.X[0] = [q, qd, qdd]
+        
+        return self.X
+
+
+
+
