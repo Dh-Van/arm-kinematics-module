@@ -11,7 +11,7 @@ def main():
                                         final_pos=[60])
     
     # generate trajectory
-    t = traj.generate(nsteps=20)
+    t = traj.generate(nsteps=30)
 
     # plot trajectory
     traj.plot()
