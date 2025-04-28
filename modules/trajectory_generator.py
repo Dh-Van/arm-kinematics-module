@@ -76,7 +76,7 @@ class MultiAxisTrajectoryGenerator():
         Returns:
             list: List of position, velocity, acceleration for each DOF.
         """
-        self.t = np.linspace(0, self.T, nsteps)
+        self.t = np.linspace(0, self.m.T, nsteps)
         return self.m.generate(nsteps=nsteps)
 
 
@@ -202,11 +202,20 @@ class CubicPolynomial():
             self.X[i] = [q, qd, qdd]
         return self.X
 
-
-
 class QuinticPolynomial():
     def __init__(self, trajgen):
         self._copy_params(trajgen)
+        dx = 0.11
+        dy = 0.2
+        dz = 4
+
+        time_x = np.sqrt(self.final_pos[0] ** 2 - self.start_pos[0] ** 2) / dx
+        time_y = np.sqrt(self.final_pos[1] ** 2 - self.start_pos[1] ** 2) / dy
+        time_z = np.sqrt(self.final_pos[2] ** 2 - self.start_pos[2] ** 2) / dz
+
+        self.T = max(time_x, max(time_y, time_z))
+        print(self.T)
+
         self.solve()
 
 
@@ -223,6 +232,7 @@ class QuinticPolynomial():
 
     
     def solve(self):
+
         t0, tf = 0, self.T
         self.A = np.array(
                 [[1, t0, t0**2, t0**3, t0**4, t0**5],

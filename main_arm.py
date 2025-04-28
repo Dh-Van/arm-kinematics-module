@@ -15,6 +15,7 @@ from modules.trajectory_generator import MultiAxisTrajectoryGenerator
 import time
 from pynput import keyboard
 import yaml
+from solutions.five_dof_arm import FiveDOFRobot
 
 
 class Visualizer:
